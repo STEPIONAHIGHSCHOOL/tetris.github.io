@@ -1,163 +1,178 @@
 import pygame
 import random
 
-#Window size and game block
+# Window and block settings
 Screen_Width = 300
 Screen_Height = 600
 Block_size = 30
 Board_width = Screen_Width // Block_size
 Board_Height = Screen_Height // Block_size
-fps = 20 # increased FPS to make the game faster
+FPS = 20  # game frames per second
 
-#Tetromino shape and colors
+# Tetromino shapes and colors
 SHAPES = [
-    [[1,1,1,1]], #I
-    [[1,1], [1,1]], #O
-    [[1,1,0], [0,1,1]], #s
-    [[0,1,1], [0,1,1]], #z
-    [[1,1,1], [0,1,0]], #T
-    [[1,1,1], [1,0,0]], #l
-    [[1,1,1], [0,0,1]] #J
+    [[1,1,1,1]],          # I
+    [[1,1],[1,1]],        # O
+    [[1,1,0],[0,1,1]],    # S
+    [[0,1,1],[1,1,0]],    # Z
+    [[1,1,1],[0,1,0]],    # T
+    [[1,1,1],[1,0,0]],    # L
+    [[1,1,1],[0,0,1]]     # J
 ]
-COLOR =[
-    (0,255,255), #cyan
-    (255, 255, 0), #Yellow
-    (0,255,0), #Green
-    (255,0,0),#RED
-    (255,0,255), #Magenta
-    (255,165,0), #Orange
-    (0,0,255) #Blue
+COLORS = [
+    (0,255,255),  # Cyan
+    (255,255,0),  # Yellow
+    (0,255,0),    # Green
+    (255,0,0),    # Red
+    (255,0,255),  # Magenta
+    (255,165,0),  # Orange
+    (0,0,255)     # Blue
 ]
 
-class Game_tetris:
+class GameTetris:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((Screen_Width,Screen_Height))
+        self.screen = pygame.display.set_mode((Screen_Width, Screen_Height))
         pygame.display.set_caption("Tetris")
         self.clock = pygame.time.Clock()
-        self.board = [[0] * Board_width for _ in range(Board_Height)]
-        self.gameover= False
-        self.teteromino = self.new_teteromino()
-        self.next_teteromino = self.new_teteromino()
-        self.x, self.y = Board_width //2, 0
-        self.fall = 0
-        self.score = 0 
-        self.level = 1
-        self.line_clear = 0
+        self.board = [[0]*Board_width for _ in range(Board_Height)]
+        self.gameover = False
 
-    def new_teteromino(self):
+        self.tetromino = self.new_tetromino()
+        self.next_tetromino = self.new_tetromino()
+        self.x, self.y = Board_width // 2, 0
+
+        self.fall_time = 0
+        self.level = 1
+        self.score = 0
+        self.lines_cleared = 0
+
+    def new_tetromino(self):
         shape = random.choice(SHAPES)
-        color = COLOR[SHAPES.index(shape)]
-        return {'shape':shape,'color':color}
-    
-    def board_line(self):
-        self.screen.fill((0,0,0))
-        for y in range(Board_Height):
-            for x in range(Board_width):
-                if self.board[y][x]:
-                    pygame.draw.rect(self.screen,COLOR[self.board[y][x] - 1],
-                                     (x *Block_size, y*Block_size, Block_size,Block_size))
-                    
-    def draw_tetromino(self):
-        shape = self.teteromino['shape']
-        color = self.teteromino['color']
+        color = COLORS[SHAPES.index(shape)]
+        return {'shape': shape, 'color': color}
+
+    def valid_position(self, dx=0, dy=0, shape=None):
+        if shape is None:
+            shape = self.tetromino['shape']
         for y, row in enumerate(shape):
             for x, cell in enumerate(row):
-                if cell:
-                    pygame.draw.rect(self.screen, color, 
-                                     ((self.x + x) * Block_size,(self.y + y)*Block_size,Block_size,Block_size))
-    
-    def draw_txt(self,text,size,color,x,y):
-        font = pygame.font.SysFont("comicsansms",size)
-        label = font.render(text,True,color) 
-        self.screen.blit(label,(x,y))      
-
-    def check(self,dx,dy):
-        shape = self.teteromino['shape']
-        for y, row in enumerate(shape):
-            for x,cell in enumerate(row):
                 if cell:
                     new_x = self.x + x + dx
                     new_y = self.y + y + dy
-                    if new_x < 0 or new_x >=Board_width or new_y >= Board_Height:
-                        return True
+                    if new_x < 0 or new_x >= Board_width or new_y >= Board_Height:
+                        return False
                     if new_y >= 0 and self.board[new_y][new_x]:
-                        return True
-        return False
-    
-    def merge(self):
-        shape = self.teteromino['shape']
-        color = self.teteromino['color']
+                        return False
+        return True
+
+    def merge_tetromino(self):
+        shape = self.tetromino['shape']
+        color = self.tetromino['color']
+        for y, row in enumerate(shape):
+            for x, cell in enumerate(row):
+                if cell and self.y + y >= 0:
+                    self.board[self.y + y][self.x + x] = COLORS.index(color) + 1
+
+    def clear_lines(self):
+        new_board = []
+        lines_cleared = 0
+        for row in self.board:
+            if all(row):
+                lines_cleared += 1
+            else:
+                new_board.append(row)
+        for _ in range(lines_cleared):
+            new_board.insert(0, [0]*Board_width)
+        self.board = new_board
+
+        self.lines_cleared += lines_cleared
+        self.score += lines_cleared * 100
+
+        if self.lines_cleared // 10 >= self.level:
+            self.level += 1
+
+    def rotate_tetromino(self):
+        shape = self.tetromino['shape']
+        rotated = [list(row) for row in zip(*shape[::-1])]
+        if self.valid_position(shape=rotated):
+            self.tetromino['shape'] = rotated
+
+    def move(self, dx, dy):
+        if self.valid_position(dx, dy):
+            self.x += dx
+            self.y += dy
+        elif dy:  # hit bottom
+            self.merge_tetromino()
+            self.clear_lines()
+            self.tetromino = self.next_tetromino
+            self.next_tetromino = self.new_tetromino()
+            self.x, self.y = Board_width // 2, 0
+            if not self.valid_position():
+                self.gameover = True
+
+    def draw_board(self):
+        self.screen.fill((0,0,0))
+        # Draw locked blocks
+        for y, row in enumerate(self.board):
+            for x, cell in enumerate(row):
+                if cell:
+                    color = COLORS[cell-1]
+                    pygame.draw.rect(self.screen, color, (x*Block_size, y*Block_size, Block_size, Block_size))
+        # Draw current tetromino
+        shape = self.tetromino['shape']
+        color = self.tetromino['color']
         for y, row in enumerate(shape):
             for x, cell in enumerate(row):
                 if cell:
-                    self.board[self.y + y][self.x + x] = COLOR.index(color) + 1
+                    px = (self.x + x) * Block_size
+                    py = (self.y + y) * Block_size
+                    pygame.draw.rect(self.screen, color, (px, py, Block_size, Block_size))
+        self.draw_grid()
+        self.draw_text(f"Score: {self.score}", 18, (255,255,255), 10, 10)
+        self.draw_text(f"Level: {self.level}", 18, (255,255,255), 10, 40)
+        pygame.display.flip()
 
-    def clear_line(self):
-        lines_clear = [i for i, row in enumerate(self.board)if all(row)]   
-        for i in lines_clear:
-            self.board.pop(i)
-            self.board.insert(0, [0] * Board_width)
-        self.line_clear += len(lines_clear)
-        self.score += len(lines_clear) * 100
+    def draw_grid(self):
+        for x in range(Board_width):
+            pygame.draw.line(self.screen,(50,50,50),(x*Block_size,0),(x*Block_size,Screen_Height))
+        for y in range(Board_Height):
+            pygame.draw.line(self.screen,(50,50,50),(0,y*Block_size),(Screen_Width,y*Block_size))
 
-        if self.line_clear // 10 > self.level - 1:
-            self.level += 1
-            self.fps = fps+self.level
-
-    def move(self,dx,dy):
-        if not self.gameover:
-            if not self.check(dx,dy):
-                self.x += dx
-                self.y += dy
-            elif dy:
-                self.merge()
-                self.clear_line()
-                self.teteromino = self.next_teteromino
-                self.next_teteromino = self.new_teteromino()
-                self.x, self.y = Board_width // 2, 0
-                if self.check(0,0):
-                    self.gameover=True
-
-    def rotate(self):
-        shape = self.teteromino['shape']
-        rotate_shape = list(zip(*shape[::-1]))
-        K =self.teteromino['shape']
-        self.teteromino['shape'] = rotate_shape
-        if self.check(0,0):
-            self.teteromino['shape'] = K
-          
+    def draw_text(self, text, size, color, x, y):
+        font = pygame.font.SysFont("comicsansms", size)
+        label = font.render(text, True, color)
+        self.screen.blit(label, (x,y))
 
     def run(self):
         while not self.gameover:
-            self.fall +=self.clock.get_rawtime()
-            self.clock.tick(fps)
-            
-            self.screen.fill((0,0,0))
-            self.board_line()
-            self.draw_tetromino()
-            self.draw_txt(f"Score: {self.score}", 18,(255,255,255), 10, 10)
-            self.draw_txt(f"Level: {self.level}", 18, (255,255,255),10, 40)
-            pygame.display.flip()
+            self.fall_time += self.clock.get_rawtime()
+            self.clock.tick(FPS)
 
-            if self.fall > 1000 // fps:
+            fall_speed = max(500 - (self.level-1)*50, 100)
+            if self.fall_time > fall_speed:
                 self.move(0,1)
-                self.fall = 0
+                self.fall_time = 0
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.gameover = True
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT:
                         self.move(-1,0)
-                    if event.key == pygame.K_RIGHT:
+                    elif event.key == pygame.K_RIGHT:
                         self.move(1,0)
-                    if event.key == pygame.K_DOWN:
+                    elif event.key == pygame.K_DOWN:
                         self.move(0,1)
-                    if event.key == pygame.K_UP:
-                        self.rotate()
-        pygame.quit()  
+                    elif event.key == pygame.K_UP:
+                        self.rotate_tetromino()
+
+            self.draw_board()
+
+        print(f"Game Over! Score: {self.score}")
+        pygame.quit()
+
 
 if __name__ == "__main__":
-    game_tetris = Game_tetris()
-    game_tetris.run()
-
+    game = GameTetris()
+    game.run()
